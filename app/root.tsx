@@ -1,18 +1,21 @@
-import type { LinksFunction } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import {
   Form,
-  Link,
   Links,
   Meta,
+  NavLink,
   Outlet,
   Scripts,
   ScrollRestoration,
   json,
   redirect,
   useLoaderData,
+  useNavigation,
+  useSubmit,
 } from "@remix-run/react";
 import appStylesHref from "./app.css?url";
 import { createEmptyContact, getContacts } from "./data";
+import { useEffect, useState } from "react";
 
 export const action = async () => {
   const contact = await createEmptyContact();
@@ -23,13 +26,30 @@ export const links: LinksFunction = () => [
   { rel: "stylesheet", href: appStylesHref },
 ];
 
-export const loader = async () => {
-  const contacts = await getContacts();
-  return json({ contacts });
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  const q = url.searchParams.get("q");
+  const contacts = await getContacts(q);
+  return json({ contacts, q });
 };
 
 export default function App() {
-  const { contacts } = useLoaderData<typeof loader>();
+  const { contacts, q } = useLoaderData<typeof loader>();
+
+  // the query now needs to be kept in state
+  const [query, setQuery] = useState(q || "");
+  const submit = useSubmit();
+  const navigation = useNavigation();
+  const searching =
+    navigation.location &&
+    new URLSearchParams(navigation.location.search).has("q");
+
+  // we still have a `useEffect` to synchronize the query
+  // to the component state on back/forward button clicks
+  useEffect(() => {
+    setQuery(q || "");
+  }, [q]);
+
   return (
     <html lang="en">
       <head>
@@ -42,15 +62,27 @@ export default function App() {
         <div id="sidebar">
           <h1>Remix Contacts</h1>
           <div>
-            <Form id="search-form" role="search">
+            <Form
+              id="search-form"
+              role="search"
+              onChange={(event) => {
+                const isFirstSearch = q === null;
+                submit(event.currentTarget, {
+                  replace: !isFirstSearch,
+                });
+              }}
+            >
               <input
                 id="q"
+                className={searching ? "loading" : ""}
+                onChange={(event) => setQuery(event.currentTarget.value)}
                 aria-label="Search contacts"
                 placeholder="Search"
                 type="search"
                 name="q"
+                value={query}
               />
-              <div id="search-spinner" aria-hidden hidden={true} />
+              <div id="search-spinner" aria-hidden hidden={!searching} />
             </Form>
             <Form method="post">
               <button type="submit">New</button>
@@ -61,7 +93,16 @@ export default function App() {
               <ul>
                 {contacts.map((contact) => (
                   <li key={contact.id}>
-                    <Link to={`contacts/${contact.id}`}>
+                    <NavLink
+                      className={({ isActive, isPending }) =>
+                        isActive ? "active" : isPending ? "pending" : ""
+                      }
+                      to={{
+                        pathname: `contacts/${contact.id}`,
+                        search: `?q=${q}`,
+                      }}
+                      // to={`contacts/${contact.id}?q=${q}`}
+                    >
                       {contact.first || contact.last ? (
                         <>
                           {contact.first} {contact.last}
@@ -70,7 +111,7 @@ export default function App() {
                         <i>No Name</i>
                       )}{" "}
                       {contact.favorite ? <span>★</span> : null}
-                    </Link>
+                    </NavLink>
                   </li>
                 ))}
               </ul>
@@ -81,7 +122,12 @@ export default function App() {
             )}
           </nav>
         </div>
-        <div id="detail">
+        <div
+          className={
+            navigation.state === "loading" && !searching ? "loading" : ""
+          }
+          id="detail"
+        >
           <Outlet />
         </div>
         <ScrollRestoration />
