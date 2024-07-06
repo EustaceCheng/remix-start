@@ -1,6 +1,7 @@
 import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import {
   Form,
+  Link,
   Links,
   Meta,
   NavLink,
@@ -9,7 +10,9 @@ import {
   ScrollRestoration,
   json,
   redirect,
+  useFetcher,
   useLoaderData,
+  useLocation,
   useNavigation,
   useSubmit,
 } from "@remix-run/react";
@@ -35,10 +38,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function App() {
   const { contacts, q } = useLoaderData<typeof loader>();
+  const location = useLocation();
 
   // the query now needs to be kept in state
   const [query, setQuery] = useState(q || "");
   const submit = useSubmit();
+  const fetcher = useFetcher();
   const navigation = useNavigation();
   const searching =
     navigation.location &&
@@ -60,11 +65,17 @@ export default function App() {
       </head>
       <body>
         <div id="sidebar">
-          <h1>Remix Contacts</h1>
+          <h1>
+            <Link className="no-underline" to="/">
+              Remix Contacts
+            </Link>
+          </h1>
+
           <div>
-            <Form
+            <fetcher.Form
               id="search-form"
               role="search"
+              action={`${location.pathname}`}
               onChange={(event) => {
                 const isFirstSearch = q === null;
                 submit(event.currentTarget, {
@@ -83,7 +94,7 @@ export default function App() {
                 value={query}
               />
               <div id="search-spinner" aria-hidden hidden={!searching} />
-            </Form>
+            </fetcher.Form>
             <Form method="post">
               <button type="submit">New</button>
             </Form>
@@ -99,9 +110,8 @@ export default function App() {
                       }
                       to={{
                         pathname: `contacts/${contact.id}`,
-                        search: `?q=${q}`,
+                        search: `?q=${q || ""}`,
                       }}
-                      // to={`contacts/${contact.id}?q=${q}`}
                     >
                       {contact.first || contact.last ? (
                         <>
